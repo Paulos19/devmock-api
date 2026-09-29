@@ -20,7 +20,11 @@ import {
   Activity,
   Sliders,
   Sparkles,
-  GitBranch
+  GitBranch,
+  Sun,
+  Laptop,
+  CheckCircle2,
+  Share2
 } from "lucide-react";
 
 interface WebhookEvent {
@@ -30,6 +34,7 @@ interface WebhookEvent {
   status: number;
   time: string;
   payload: Record<string, unknown>;
+  headers: Record<string, string>;
 }
 
 const SAMPLE_EVENTS: WebhookEvent[] = [
@@ -45,53 +50,58 @@ const SAMPLE_EVENTS: WebhookEvent[] = [
       amount: 14900,
       currency: "brl",
       status: "succeeded",
-      customer: "cus_N83a7s098df",
+      customer: "cus_N7b53xWw9",
       payment_method_types: ["pix", "card"],
-      charges: {
-        total_count: 1,
-        data: [{ paid: true, receipt_url: "https://pay.mock/rcpt_984" }]
+      metadata: {
+        order_id: "PED-98214",
+        user_email: "cliente@empresa.com.br"
       }
+    },
+    headers: {
+      "stripe-signature": "t=1679071234,v1=9e83bd60...",
+      "content-type": "application/json",
+      "user-agent": "Stripe/1.0 (+https://stripe.com/docs/webhooks)"
     }
   },
   {
-    id: "evt_3821fc09",
-    source: "Mercado Pago",
-    event: "payment.created (PIX)",
+    id: "evt_1092a84c",
+    source: "Asaas",
+    event: "PAYMENT_RECEIVED",
     status: 200,
-    time: "2s atrás",
+    time: "há 2 min",
+    payload: {
+      event: "PAYMENT_RECEIVED",
+      payment: {
+        id: "pay_98124810924",
+        customer: "cus_000005128",
+        value: 290.0,
+        netValue: 288.01,
+        billingType: "PIX",
+        status: "RECEIVED",
+        confirmedDate: "2025-05-18T14:32:00Z"
+      }
+    },
+    headers: {
+      "asaas-access-token": "live_tok_92104812a...",
+      "content-type": "application/json"
+    }
+  },
+  {
+    id: "evt_1092a84d",
+    source: "Mercado Pago",
+    event: "payment.created",
+    status: 201,
+    time: "há 5 min",
     payload: {
       action: "payment.created",
-      data: { id: "9832109841" },
-      type: "payment",
-      live_mode: false,
-      qr_code: "00020126580014br.gov.bcb.pix...",
-      transaction_amount: 89.90
-    }
-  },
-  {
-    id: "evt_9941bd12",
-    source: "Assinaturas SaaS",
-    event: "customer.subscription.renewed",
-    status: 200,
-    time: "14s atrás",
-    payload: {
-      subscription_id: "sub_1Om8eL912a",
-      plan: "pro_developer_annual",
-      status: "active",
-      next_billing_cycle: "2026-04-19T10:00:00Z"
-    }
-  },
-  {
-    id: "evt_5510cc39",
-    source: "Stripe",
-    event: "charge.refunded",
-    status: 200,
-    time: "48s atrás",
-    payload: {
-      refund_id: "re_894178cc",
-      charge_id: "ch_178491823",
-      amount_refunded: 4900,
-      reason: "requested_by_customer"
+      api_version: "v1",
+      data: { id: "1314981290" },
+      date_created: "2025-05-18T14:29:12.000Z",
+      type: "payment"
+    },
+    headers: {
+      "x-signature": "ts=1679071000,v1=abc1234...",
+      "content-type": "application/json"
     }
   }
 ];
@@ -102,95 +112,163 @@ export default function DevMockLandingPage() {
   const [eventsList, setEventsList] = useState<WebhookEvent[]>(SAMPLE_EVENTS);
   const [isReplaying, setIsReplaying] = useState(false);
   const [replaySuccess, setReplaySuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<"payload" | "headers" | "curl">("payload");
-  const [sseActive, setSseActive] = useState(true);
+  const [activeTab, setActiveTab] = useState<"payload" | "headers">("payload");
+  const [filterSource, setFilterSource] = useState<string>("All");
 
-  const mockEndpoint = "https://devmock.api/v1/hook/whk_live_839f201";
+  const mockEndpointUrl = "https://devmock.api/wh/v1/9a4f-8e2b-live";
 
-  const handleCopyEndpoint = () => {
-    navigator.clipboard?.writeText(mockEndpoint);
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(mockEndpointUrl);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2000);
   };
 
-  const handleReplay = (evt: WebhookEvent) => {
+  const handleSimulateWebhook = (gateway: string) => {
+    const newId = `evt_${Math.random().toString(16).substring(2, 10)}`;
+    let newEvt: WebhookEvent;
+
+    if (gateway === "Stripe") {
+      newEvt = {
+        id: newId,
+        source: "Stripe",
+        event: "charge.captured",
+        status: 200,
+        time: "agora mesmo",
+        payload: {
+          id: `ch_${Math.random().toString(36).substring(2, 9)}`,
+          amount: Math.floor(Math.random() * 50000) + 1000,
+          currency: "brl",
+          captured: true,
+          livemode: false,
+          created_at: new Date().toISOString()
+        },
+        headers: {
+          "stripe-signature": `t=${Date.now()},v1=hash_simulada`,
+          "content-type": "application/json"
+        }
+      };
+    } else if (gateway === "Asaas") {
+      newEvt = {
+        id: newId,
+        source: "Asaas",
+        event: "PAYMENT_OVERDUE",
+        status: 200,
+        time: "agora mesmo",
+        payload: {
+          event: "PAYMENT_OVERDUE",
+          payment: {
+            id: `pay_${Math.random().toString(36).substring(2, 9)}`,
+            value: 99.9,
+            billingType: "BOLETO",
+            status: "OVERDUE"
+          }
+        },
+        headers: {
+          "asaas-access-token": "simulated_token_xyz",
+          "content-type": "application/json"
+        }
+      };
+    } else {
+      newEvt = {
+        id: newId,
+        source: "Mercado Pago",
+        event: "merchant_order.updated",
+        status: 200,
+        time: "agora mesmo",
+        payload: {
+          topic: "merchant_order",
+          resource: `https://api.mercadopago.com/merchant_orders/${Math.floor(Math.random() * 9000000)}`,
+          status: "closed"
+        },
+        headers: {
+          "x-signature": `ts=${Date.now()},v1=signature_mp`,
+          "content-type": "application/json"
+        }
+      };
+    }
+
+    setEventsList((prev) => [newEvt, ...prev]);
+    setSelectedEvent(newEvt);
+  };
+
+  const handleReplay = () => {
     setIsReplaying(true);
     setTimeout(() => {
       setIsReplaying(false);
       setReplaySuccess(true);
-      const newEvt: WebhookEvent = {
-        ...evt,
-        id: `evt_replay_${Math.floor(Math.random() * 90000 + 10000)}`,
-        time: "agora mesmo (replay)"
-      };
-      setEventsList((prev) => [newEvt, ...prev.slice(0, 5)]);
-      setSelectedEvent(newEvt);
-      setTimeout(() => setReplaySuccess(false), 2500);
-    }, 600);
+      setTimeout(() => setReplaySuccess(false), 3000);
+    }, 700);
   };
 
-  const handleSimulateNewEvent = () => {
-    const randomAmount = (Math.random() * 200 + 20).toFixed(2);
-    const newId = `evt_${Math.random().toString(36).substring(2, 9)}`;
-    const freshEvent: WebhookEvent = {
-      id: newId,
-      source: "Stripe PIX Simulator",
-      event: "payment_intent.succeeded",
-      status: 200,
-      time: "agora mesmo",
-      payload: {
-        id: `pi_sim_${Math.random().toString(36).substring(2, 8)}`,
-        object: "payment_intent",
-        amount_received: Number(randomAmount) * 100,
-        currency: "brl",
-        method: "pix_dynamic_qr",
-        status: "succeeded",
-        simulated: true,
-        timestamp: new Date().toISOString()
-      }
-    };
-    setEventsList((prev) => [freshEvent, ...prev.slice(0, 5)]);
-    setSelectedEvent(freshEvent);
-  };
+  const filteredEvents =
+    filterSource === "All"
+      ? eventsList
+      : eventsList.filter((e) => e.source.toLowerCase() === filterSource.toLowerCase());
 
   return (
-    <div className="relative min-h-screen bg-[#07090e] text-slate-100 selection:bg-emerald-500/20 selection:text-emerald-300">
-      {/* Background radial glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[550px] bg-gradient-to-b from-emerald-600/15 via-cyan-600/5 to-transparent blur-3xl pointer-events-none -z-10" />
-      <div className="absolute top-96 right-10 w-[400px] h-[400px] bg-indigo-600/10 blur-3xl pointer-events-none -z-10" />
+    <div className="relative min-h-screen bg-slate-50 text-slate-800 selection:bg-emerald-100 selection:text-emerald-900">
+      {/* Background Subtle Mesh & Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1100px] h-[500px] bg-gradient-to-b from-emerald-100/70 via-teal-50/50 to-transparent blur-3xl pointer-events-none -z-10" />
+      <div className="absolute top-96 right-0 w-[450px] h-[450px] bg-sky-100/40 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-[#07090e]/80 backdrop-blur-md">
+      {/* Top Banner Notice */}
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white text-xs py-2 px-4 text-center font-medium shadow-sm">
+        <span className="inline-flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5" />
+          Novo: Integração instantânea com Webhooks do Stripe, Asaas e Mercado Pago em 1-clique!
+          <a href="#demo" className="underline font-bold hover:text-emerald-100 transition-colors ml-1">
+            Testar Demo ao Vivo &rarr;
+          </a>
+        </span>
+      </div>
+
+      {/* Navbar Light */}
+      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-md shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-400 p-[1px] shadow-lg shadow-emerald-500/20">
-              <div className="w-full h-full bg-[#090d16] rounded-xl flex items-center justify-center">
-                <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-              </div>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/20 text-white">
+              <Zap className="w-5 h-5 fill-current" />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg tracking-tight text-white">DevMock</span>
-              <span className="text-xs uppercase tracking-wider font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                API
+            <div>
+              <span className="font-extrabold text-xl tracking-tight text-slate-900">
+                DevMock<span className="text-emerald-600">.api</span>
+              </span>
+              <span className="hidden sm:inline-block ml-2 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                v2.0 Light
               </span>
             </div>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8 text-sm text-slate-400">
-            <a href="#problema" className="hover:text-emerald-400 transition-colors">A Dor dos Devs</a>
-            <a href="#solucao" className="hover:text-emerald-400 transition-colors">Como Funciona</a>
-            <a href="#demo" className="hover:text-emerald-400 transition-colors">Live Dashboard</a>
-            <a href="#recursos" className="hover:text-emerald-400 transition-colors">Features</a>
-            <a href="#precos" className="hover:text-emerald-400 transition-colors">Planos</a>
+          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+            <a href="#features" className="hover:text-emerald-600 transition-colors">
+              Recursos
+            </a>
+            <a href="#demo" className="hover:text-emerald-600 transition-colors">
+              Console Interativo
+            </a>
+            <a href="#how-it-works" className="hover:text-emerald-600 transition-colors">
+              Como Funciona
+            </a>
+            <a href="#pricing" className="hover:text-emerald-600 transition-colors">
+              Planos
+            </a>
           </nav>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleCopyUrl}
+              className="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-all cursor-pointer shadow-xs"
+            >
+              {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
+              <span>{mockEndpointUrl.replace("https://", "")}</span>
+            </button>
+
             <a
               href="#demo"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold shadow-md shadow-emerald-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-md shadow-emerald-600/20 hover:shadow-emerald-600/30 active:scale-95"
             >
-              <Zap className="w-4 h-4" />
-              Gerar Endpoint Grátis
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Gerar Endpoint Grátis</span>
             </a>
           </div>
         </div>
@@ -199,596 +277,452 @@ export default function DevMockLandingPage() {
       {/* Hero Section */}
       <section className="pt-20 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="text-center max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-mono mb-6 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            Next.js SSE & WebSockets Live Engine
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold mb-6 shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+            Next.js SSE &amp; WebSockets Live Inspector
           </div>
 
-          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-[1.15] mb-6">
-            Chega de sofrer para testar{" "}
-            <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
-              webhooks & pagamentos
-            </span>{" "}
-            no localhost.
+          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.12]">
+            Simule webhooks e gateways de pagamento{" "}
+            <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">
+              sem dor de cabeça.
+            </span>
           </h1>
 
-          <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-8 max-w-2xl mx-auto">
-            Crie endpoints temporários instantâneos para simular Stripe, gateways Pix e eventos assíncronos. Inspecione payloads em tempo real via Server-Sent Events e faça replay com 1 clique.
+          <p className="mt-6 text-lg sm:text-xl text-slate-600 leading-relaxed font-normal">
+            Crie endpoints temporários instantâneos para testar integrações com Stripe, Mercado Pago, Asaas e Pix.
+            Inspecione payloads em tempo real e faça retransmissão para seu localhost com 1 clique.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
             <a
               href="#demo"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold text-base shadow-xl shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-lg shadow-emerald-600/25 hover:shadow-xl hover:shadow-emerald-600/35 hover:-translate-y-0.5 cursor-pointer text-base"
             >
-              <Play className="w-4 h-4 fill-slate-950" />
-              Testar Simulador no Navegador
+              <Zap className="w-4 h-4 fill-current" />
+              Criar Endpoint de Teste Agora
             </a>
             <button
-              onClick={handleCopyEndpoint}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl border border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-300 text-sm font-mono transition-all"
+              onClick={handleCopyUrl}
+              className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm transition-all hover:border-slate-400"
             >
-              {copiedUrl ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
-              <span>{copiedUrl ? "Copiado para o Clipboard!" : "curl https://devmock.api/v1/..."}</span>
+              {copiedUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+              {copiedUrl ? "Copiado para a Área de Transferência!" : "Copiar URL Pública"}
             </button>
           </div>
 
-          {/* Quick Stats Banner */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-slate-800/80 max-w-2xl mx-auto text-left">
-            <div>
-              <div className="text-2xl font-bold font-mono text-white">&lt;10ms</div>
-              <div className="text-xs text-slate-400">Latência do túnel SSE</div>
+          <div className="mt-10 flex items-center justify-center gap-6 text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Sem cartão de crédito</span>
             </div>
-            <div>
-              <div className="text-2xl font-bold font-mono text-emerald-400">0 CLI</div>
-              <div className="text-xs text-slate-400">Sem instalar ngrok/localtunnel</div>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Túnel Seguro SSL Automático</span>
             </div>
-            <div>
-              <div className="text-2xl font-bold font-mono text-cyan-400">100% Mock</div>
-              <div className="text-xs text-slate-400">Stripe, Pix, Mercado Pago</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold font-mono text-white">Replay 1-Click</div>
-              <div className="text-xs text-slate-400">Reenvie para o seu localhost</div>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Histórico SSE Instantâneo</span>
             </div>
           </div>
         </div>
-      </section>
 
-      {/* Comparison: The Pain vs The Solution */}
-      <section id="problema" className="py-16 border-y border-slate-800/70 bg-slate-950/40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <h2 className="text-xs font-mono uppercase tracking-widest text-emerald-400 mb-2">A Realidade do Dev Backend</h2>
-            <p className="text-2xl sm:text-3xl font-bold text-white">Por que testar webhooks hoje é um pesadelo?</p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* The Pain */}
-            <div className="p-6 sm:p-8 rounded-2xl bg-rose-950/10 border border-rose-900/30 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold">
-                  ✕
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-rose-300">O Jeito Doloroso & Tradicional</h3>
-                  <p className="text-xs text-rose-400/80">ngrok vencendo tokens, CLI quebrando, payload perdido</p>
-                </div>
+        {/* Live Interactive Sandbox / Demo Console */}
+        <div id="demo" className="mt-14 scroll-mt-24">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 overflow-hidden">
+            {/* Window bar */}
+            <div className="px-5 py-3.5 bg-slate-100/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <span className="w-3 h-3 rounded-full bg-rose-400/80 inline-block shadow-xs" />
+                <span className="w-3 h-3 rounded-full bg-amber-400/80 inline-block shadow-xs" />
+                <span className="w-3 h-3 rounded-full bg-emerald-400/80 inline-block shadow-xs" />
+                <span className="ml-2 font-mono text-xs text-slate-600 font-semibold flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-slate-500" />
+                  live-inspector // {mockEndpointUrl}
+                </span>
               </div>
 
-              <ul className="space-y-4 text-sm text-slate-300">
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-400 font-bold shrink-0 mt-0.5">•</span>
-                  <span><strong>Configuração burocrática de túnel:</strong> Baixar CLI, autenticar token, abrir terminal e torcer para o ngrok não expirar a URL a cada 2 horas.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-400 font-bold shrink-0 mt-0.5">•</span>
-                  <span><strong>Cartão recusado ou sem saldo no sandbox:</strong> Precisar abrir o dashboard pesado do Stripe ou do gateway para disparar eventos simulados manualmente.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-400 font-bold shrink-0 mt-0.5">•</span>
-                  <span><strong>Zero replay imediato:</strong> Se seu backend crashar durante o debug, você tem que refazer todo o fluxo de checkout no frontend para disparar novamente.</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* The Solution */}
-            <div className="p-6 sm:p-8 rounded-2xl bg-emerald-950/15 border border-emerald-600/30 relative overflow-hidden shadow-lg shadow-emerald-950/20">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold">
-                  ✓
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-emerald-300">O Jeito DevMock API</h3>
-                  <p className="text-xs text-emerald-400/80">Copie o webhook, aponte e veja a mágica fluir em tempo real</p>
-                </div>
+              {/* Quick Triggers */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium mr-1 hidden sm:inline">Disparar Webhook Mock:</span>
+                <button
+                  onClick={() => handleSimulateWebhook("Stripe")}
+                  className="px-2.5 py-1 rounded-md text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors cursor-pointer"
+                >
+                  + Stripe PIX
+                </button>
+                <button
+                  onClick={() => handleSimulateWebhook("Asaas")}
+                  className="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                >
+                  + Asaas Boleto
+                </button>
+                <button
+                  onClick={() => handleSimulateWebhook("Mercado Pago")}
+                  className="px-2.5 py-1 rounded-md text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition-colors cursor-pointer"
+                >
+                  + Mercado Pago
+                </button>
               </div>
-
-              <ul className="space-y-4 text-sm text-slate-300">
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
-                  <span><strong>Endpoints instantâneos com 1 clique:</strong> URL HTTPS pronta com rota protegida por token, pronta para receber POSTs imediatos.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
-                  <span><strong>Superpoder Server-Sent Events (SSE):</strong> O dashboard Next.js se conecta diretamente ao stream; cada webhook recebido pisca na tela em milissegundos.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
-                  <span><strong>Replay de requisições:</strong> Corrigiu o bug no seu código? Clique em <code>Replay to Localhost</code> e repita o exato payload sem precisar reabrir o carrinho.</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive Live Demo */}
-      <section id="demo" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono mb-3">
-            <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            Live Simulator Interativo
-          </div>
-          <h2 className="text-3xl font-extrabold text-white">Experimente o Dashboard em Tempo Real</h2>
-          <p className="text-sm text-slate-400 mt-2">
-            Dispare um evento simulado ou teste o replay do payload para sentir a velocidade do feed Next.js com SSE.
-          </p>
-        </div>
-
-        {/* Dashboard Frame */}
-        <div className="rounded-2xl border border-slate-800 bg-[#0d131f] shadow-2xl overflow-hidden">
-          {/* Dashboard Header Bar */}
-          <div className="border-b border-slate-800 bg-[#0a0e17] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-rose-500/80" />
-                <div className="w-3 h-3 rounded-full bg-amber-500/80" />
-                <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-              </div>
-              <span className="text-xs font-mono text-slate-400 border-l border-slate-800 pl-3">
-                hook: <span className="text-emerald-400">whk_live_839f201</span>
-              </span>
             </div>
 
-            {/* SSE status badge */}
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                SSE Stream Conectado
-              </span>
-              <button
-                onClick={handleSimulateNewEvent}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm transition-all"
-              >
-                <Zap className="w-3 h-3 fill-slate-950" />
-                + Simular Post Webhook
-              </button>
-            </div>
-          </div>
+            {/* Console Body Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[520px]">
+              {/* Left Column: Event List */}
+              <div className="lg:col-span-5 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Recebidos ao Vivo ({filteredEvents.length})
+                    </span>
+                  </div>
 
-          {/* Endpoint Bar */}
-          <div className="p-4 bg-[#090d16] border-b border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 overflow-x-auto text-xs font-mono bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 text-slate-300 w-full sm:w-auto flex-1">
-              <span className="text-emerald-400 font-bold">POST</span>
-              <span className="text-slate-400 truncate">{mockEndpoint}</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={handleCopyEndpoint}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
-              >
-                {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedUrl ? "Copiado!" : "Copiar URL"}
-              </button>
-              <button
-                onClick={() => handleReplay(selectedEvent)}
-                disabled={isReplaying}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white transition-all shadow-sm"
-              >
-                <RotateCcw className={`w-3.5 h-3.5 ${isReplaying ? "animate-spin" : ""}`} />
-                {isReplaying ? "Reenviando..." : "Replay para Localhost"}
-              </button>
-            </div>
-          </div>
-
-          {/* Feed & Inspector Grid */}
-          <div className="grid md:grid-cols-12 min-h-[460px]">
-            {/* Left Column: Events Feed */}
-            <div className="md:col-span-5 border-r border-slate-800 bg-[#0b101b] p-3 overflow-y-auto max-h-[500px]">
-              <div className="flex items-center justify-between px-2 py-1.5 text-xs font-mono text-slate-400 uppercase tracking-wider">
-                <span>Eventos Recebidos ({eventsList.length})</span>
-                <span className="text-[10px] text-emerald-400">Live SSE</span>
-              </div>
-
-              <div className="mt-2 space-y-2">
-                {eventsList.map((evt) => {
-                  const isSelected = selectedEvent.id === evt.id;
-                  return (
-                    <div
-                      key={evt.id}
-                      onClick={() => setSelectedEvent(evt)}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                        isSelected
-                          ? "bg-slate-800/80 border-emerald-500/50 shadow-md shadow-emerald-500/5"
-                          : "bg-slate-900/40 border-slate-800/80 hover:bg-slate-800/40 hover:border-slate-700"
-                      }`}
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs text-[11px] font-semibold text-slate-600">
+                    <button
+                      onClick={() => setFilterSource("All")}
+                      className={`px-2 py-0.5 rounded ${filterSource === "All" ? "bg-slate-800 text-white" : "hover:text-slate-900"}`}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-mono text-[11px] font-bold text-slate-300 truncate max-w-[180px]">
-                          {evt.event}
-                        </span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          {evt.status} OK
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
-                        <span className="text-slate-400">{evt.source}</span>
-                        <span>{evt.time}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                      Todos
+                    </button>
+                    <button
+                      onClick={() => setFilterSource("Stripe")}
+                      className={`px-2 py-0.5 rounded ${filterSource === "Stripe" ? "bg-slate-800 text-white" : "hover:text-slate-900"}`}
+                    >
+                      Stripe
+                    </button>
+                    <button
+                      onClick={() => setFilterSource("Asaas")}
+                      className={`px-2 py-0.5 rounded ${filterSource === "Asaas" ? "bg-slate-800 text-white" : "hover:text-slate-900"}`}
+                    >
+                      Asaas
+                    </button>
+                  </div>
+                </div>
 
-            {/* Right Column: Payload Inspector */}
-            <div className="md:col-span-7 bg-[#080c14] p-4 flex flex-col justify-between">
-              <div>
+                <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                  {filteredEvents.map((evt) => {
+                    const isSelected = selectedEvent.id === evt.id;
+                    return (
+                      <div
+                        key={evt.id}
+                        onClick={() => setSelectedEvent(evt)}
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-white border-emerald-500 shadow-md ring-2 ring-emerald-500/10"
+                            : "bg-white hover:bg-slate-100/70 border-slate-200 shadow-2xs"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs mb-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${
+                              evt.source === "Stripe"
+                                ? "bg-violet-100 text-violet-800 border border-violet-200"
+                                : evt.source === "Asaas"
+                                ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                : "bg-sky-100 text-sky-800 border border-sky-200"
+                            }`}
+                          >
+                            {evt.source}
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-medium">{evt.time}</span>
+                        </div>
+
+                        <div className="font-mono text-xs font-semibold text-slate-800 truncate mb-1">
+                          {evt.event}
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-500">
+                          <span className="text-slate-400">{evt.id}</span>
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[10px]">
+                            {evt.status} OK
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Column: Event Inspector & Replay */}
+              <div className="lg:col-span-7 flex flex-col bg-white">
+                {/* Details Bar */}
+                <div className="p-4 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-slate-900">{selectedEvent.event}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200">
+                        {selectedEvent.source}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-400 font-mono mt-0.5 block">{selectedEvent.id}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleReplay}
+                      disabled={isReplaying}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCcw className={`w-3.5 h-3.5 ${isReplaying ? "animate-spin" : ""}`} />
+                      <span>{isReplaying ? "Reenviando..." : "Replay para Localhost:3000"}</span>
+                    </button>
+
+                    {replaySuccess && (
+                      <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1 animate-fade-in">
+                        <Check className="w-3.5 h-3.5" /> Reenviado com sucesso!
+                      </span>
+                    )}
+                  </div>
+                </div>
+
                 {/* Tabs */}
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                <div className="px-4 py-2 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setActiveTab("payload")}
-                      className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
+                      className={`px-3 py-1 rounded text-xs font-mono font-semibold transition-colors ${
                         activeTab === "payload"
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "text-slate-400 hover:text-slate-200"
+                          ? "bg-white text-emerald-700 border border-slate-300 shadow-2xs"
+                          : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
                       JSON Body
                     </button>
                     <button
                       onClick={() => setActiveTab("headers")}
-                      className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
+                      className={`px-3 py-1 rounded text-xs font-mono font-semibold transition-colors ${
                         activeTab === "headers"
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "text-slate-400 hover:text-slate-200"
+                          ? "bg-white text-emerald-700 border border-slate-300 shadow-2xs"
+                          : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
-                      Headers
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("curl")}
-                      className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
-                        activeTab === "curl"
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "text-slate-400 hover:text-slate-200"
-                      }`}
-                    >
-                      cURL Replay
+                      HTTP Headers
                     </button>
                   </div>
 
-                  <span className="text-xs font-mono text-slate-500">ID: {selectedEvent.id}</span>
+                  <button
+                    onClick={() => {
+                      const data =
+                        activeTab === "payload"
+                          ? JSON.stringify(selectedEvent.payload, null, 2)
+                          : JSON.stringify(selectedEvent.headers, null, 2);
+                      navigator.clipboard.writeText(data);
+                    }}
+                    className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 font-mono transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copiar {activeTab}
+                  </button>
                 </div>
 
-                {replaySuccess && (
-                  <div className="mb-3 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    Payload reenviado com sucesso para seu localhost (porta 3000)!
-                  </div>
-                )}
-
-                {/* Tab content viewer */}
-                <div className="rounded-xl bg-[#05070c] border border-slate-800/80 p-4 font-mono text-xs overflow-x-auto text-emerald-300/90 leading-relaxed max-h-[300px]">
-                  {activeTab === "payload" && (
-                    <pre>{JSON.stringify(selectedEvent.payload, null, 2)}</pre>
-                  )}
-                  {activeTab === "headers" && (
-                    <pre className="text-slate-300">
-{`content-type: application/json
-user-agent: Stripe/1.0 (+https://stripe.com/docs/webhooks)
-stripe-signature: t=1681987123,v1=5257a869e7ecebeda32affa62cd...
-x-devmock-stream: sse-v2
-x-forwarded-for: 177.136.21.90`}
-                    </pre>
-                  )}
-                  {activeTab === "curl" && (
-                    <pre className="text-cyan-300">
-{`curl -X POST http://localhost:3000/api/webhooks \\
-  -H "Content-Type: application/json" \\
-  -H "X-DevMock-Replay: true" \\
-  -d '${JSON.stringify(selectedEvent.payload)}'`}
-                    </pre>
-                  )}
+                {/* Code Viewer (Dark Terminal contrast for readability) */}
+                <div className="p-4 flex-1 bg-slate-900 overflow-x-auto text-slate-100 font-mono text-xs leading-relaxed selection:bg-emerald-500/30">
+                  <pre className="text-slate-200">
+                    {activeTab === "payload"
+                      ? JSON.stringify(selectedEvent.payload, null, 2)
+                      : JSON.stringify(selectedEvent.headers, null, 2)}
+                  </pre>
                 </div>
-              </div>
 
-              {/* Inspector bottom info */}
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-500 font-mono">
-                <span className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Assinatura HMAC validada
-                </span>
-                <span>Tamanho: ~840 bytes</span>
+                {/* Footer Status */}
+                <div className="px-4 py-2 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                  <span>SSL v3 / TLS 1.3 Criptografado</span>
+                  <span>Payload verificado com HMAC SHA256</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Superpower Section: Next.js + SSE */}
-      <section id="solucao" className="py-20 border-t border-slate-800/70 bg-gradient-to-b from-slate-950 to-[#07090e]">
+      {/* Feature Highlights Grid */}
+      <section id="features" className="py-20 bg-white border-y border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono mb-4">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                Superpoder do Next.js
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-2 font-mono">
+              Projetado para Desenvolvedores
+            </h2>
+            <h3 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
+              Tudo o que você precisa para testar integrações sem dor
+            </h3>
+            <p className="mt-3 text-base text-slate-600">
+              Economize horas de configuração de ngrok, portas abertas e mocks manuais com ferramentas prontas.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:shadow-lg hover:shadow-emerald-500/5 transition-all">
+              <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-5">
+                <Zap className="w-6 h-6" />
               </div>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-                Streaming Contínuo via Server-Sent Events (SSE) nativo
-              </h2>
-              <p className="mt-4 text-slate-400 leading-relaxed">
-                Esqueça polling pesado ou conexões WebSockets que caem com firewall corporativo. O DevMock usa o motor de streaming nativo do Next.js App Router para entregar cada requisição recebida instantaneamente na sua tela com zero delay.
+              <h4 className="text-lg font-bold text-slate-900 mb-2">Endpoints Instantâneos</h4>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Gere uma URL pública temporária com HTTPS nativo em menos de 1 segundo. Nenhuma instalação ou conta obrigatória para começar.
               </p>
-
-              <div className="mt-8 space-y-4">
-                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
-                  <Activity className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">Zero Overhead no Servidor</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">Next.js Edge Runtime mantém milhares de conexões abertas com consumo irrisório de memória.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
-                  <RotateCcw className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">Replay para Localhost com Override</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">Altere parâmetros do JSON no próprio browser antes de reenviar para testar cenários de erro.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
-                  <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">Validador de Assinaturas HMAC</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">Gera automaticamente o hash do Stripe, Mercado Pago ou custom secret para você testar segurança.</p>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            {/* Code Snippet Box */}
-            <div className="rounded-2xl border border-slate-800 bg-[#090d16] p-6 shadow-2xl font-mono text-xs">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4 text-slate-400">
-                <div className="flex items-center gap-2">
-                  <Code2 className="w-4 h-4 text-emerald-400" />
-                  <span>app/api/stream/route.ts</span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Next.js 15+ Route Handler</span>
+            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:shadow-lg hover:shadow-emerald-500/5 transition-all">
+              <div className="w-12 h-12 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center mb-5">
+                <RotateCcw className="w-6 h-6" />
               </div>
+              <h4 className="text-lg font-bold text-slate-900 mb-2">Replay 1-Clique para Localhost</h4>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Receba requisições reais da Stripe ou Mercado Pago e retransmita para o seu servidor local quantas vezes quiser até o seu código funcionar.
+              </p>
+            </div>
 
-              <pre className="text-slate-300 leading-relaxed overflow-x-auto">
-{`export async function GET(request: Request) {
-  const stream = new TransformStream();
-  const writer = stream.writable.getWriter();
-  const encoder = new TextEncoder();
-
-  // Escuta os webhooks do Redis Pub/Sub
-  pubsub.subscribe("whk_live_839f201", (payload) => {
-    const sseEvent = \`data: \${JSON.stringify(payload)}\\n\\n\`;
-    writer.write(encoder.encode(sseEvent));
-  });
-
-  return new Response(stream.readable, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
-  });
-}`}
-              </pre>
+            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:shadow-lg hover:shadow-emerald-500/5 transition-all">
+              <div className="w-12 h-12 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center mb-5">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h4 className="text-lg font-bold text-slate-900 mb-2">Validador de Assinaturas HMAC</h4>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Simulador e validador de cabeçalhos de assinatura criptográfica como `stripe-signature` e webhooks autenticados por token secreto.
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features Grid */}
-      <section id="recursos" className="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-14">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-emerald-400 mb-2">Ecossistema Completo</h2>
-          <p className="text-3xl font-extrabold text-white">Tudo o que um desenvolvedor precisa para integrar pagamentos</p>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700 transition-all">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4">
-              <Zap className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white mb-2">Mocks Pré-configurados</h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              Templates prontos para Stripe, Mercado Pago PIX, Asaas, PagBank, Pagar.me e GitHub Webhooks. Dispare payloads realistas em 1 clique.
-            </p>
-          </div>
-
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700 transition-all">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4">
-              <RotateCcw className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white mb-2">Replay & Retry Inteligente</h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              Falhou o tratamento do webhook no seu controller? Modifique o código, clique em Replay e teste novamente sem precisar refazer a compra.
-            </p>
-          </div>
-
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700 transition-all">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
-              <Layers className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white mb-2">Histórico Persistente</h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              Salve suas sessões de depuração para comparar payloads passados, tempos de resposta e códigos de status HTTP retornados pelo seu app.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing / Tiers */}
-      <section id="precos" className="py-20 border-t border-slate-800/80 bg-slate-950/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-xl mx-auto mb-14">
-            <h2 className="text-xs font-mono uppercase tracking-widest text-emerald-400 mb-2">Planos Transparentes</h2>
-            <p className="text-3xl font-extrabold text-white">Comece grátis, faça upgrade quando o time crescer</p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {/* Free */}
-            <div className="p-8 rounded-2xl bg-[#090d16] border border-slate-800 flex flex-col justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-white">Dev Free</h3>
-                <p className="text-xs text-slate-400 mt-1">Perfeito para testes rápidos e side projects</p>
-                <div className="mt-6 mb-6">
-                  <span className="text-4xl font-extrabold text-white">R$ 0</span>
-                  <span className="text-slate-500 text-sm"> / para sempre</span>
-                </div>
-                <ul className="space-y-3 text-sm text-slate-300">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    3 Endpoints ativos simultâneos
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Feed SSE em tempo real
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    100 eventos no histórico/dia
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Replay manual para localhost
-                  </li>
-                </ul>
-              </div>
-              <button className="mt-8 w-full py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-sm font-semibold text-white transition-colors">
-                Criar Conta Gratuita
-              </button>
-            </div>
-
-            {/* Pro */}
-            <div className="p-8 rounded-2xl bg-gradient-to-b from-slate-900 to-[#0c121d] border-2 border-emerald-500/60 shadow-xl shadow-emerald-500/10 flex flex-col justify-between relative">
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-bold text-xs uppercase tracking-wider">
-                Mais Popular
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Dev Pro</h3>
-                <p className="text-xs text-slate-400 mt-1">Para desenvolvedores full-stack e freelas</p>
-                <div className="mt-6 mb-6">
-                  <span className="text-4xl font-extrabold text-white">R$ 29</span>
-                  <span className="text-slate-500 text-sm"> / mês</span>
-                </div>
-                <ul className="space-y-3 text-sm text-slate-300">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Endpoints temporários ilimitados
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Domínios customizados (ex: mock.minhaempresa.com)
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Histórico persistente de 30 dias
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Simulador avançado com falhas e latência programada
-                  </li>
-                </ul>
-              </div>
-              <button className="mt-8 w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-bold shadow-md shadow-emerald-500/20 transition-all">
-                Começar Teste de 14 Dias
-              </button>
-            </div>
-
-            {/* Team */}
-            <div className="p-8 rounded-2xl bg-[#090d16] border border-slate-800 flex flex-col justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-white">Team & SaaS</h3>
-                <p className="text-xs text-slate-400 mt-1">Para squads de engenharia e empresas</p>
-                <div className="mt-6 mb-6">
-                  <span className="text-4xl font-extrabold text-white">R$ 99</span>
-                  <span className="text-slate-500 text-sm"> / mês</span>
-                </div>
-                <ul className="space-y-3 text-sm text-slate-300">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Tudo do Pro para até 10 desenvolvedores
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Workspaces compartilhados de teste
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Auditoria de payloads e compliance
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Suporte prioritário via Discord/Slack
-                  </li>
-                </ul>
-              </div>
-              <button className="mt-8 w-full py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-sm font-semibold text-white transition-colors">
-                Falar com Vendas
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Bottom Banner */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
-        <div className="rounded-3xl p-8 sm:p-12 bg-gradient-to-r from-emerald-950/60 via-slate-900 to-cyan-950/60 border border-emerald-500/30 text-center relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
-            Pare de perder horas configurando túneis e webhooks
+      {/* Pricing Section Clean Light */}
+      <section id="pricing" className="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center max-w-2xl mx-auto mb-16">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-2 font-mono">
+            Preços Claros &amp; Acessíveis
           </h2>
-          <p className="text-slate-400 text-sm sm:text-base max-w-xl mx-auto mb-8">
-            Gere seu primeiro endpoint agora mesmo em menos de 5 segundos. Sem cartão de crédito, sem instalação de CLI.
+          <h3 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
+            Comece grátis, faça upgrade quando escalar
+          </h3>
+          <p className="mt-3 text-base text-slate-600">
+            Perfeito para freelancers, estúdios de software e equipes de produto.
           </p>
-          <a
-            href="#demo"
-            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-bold text-base shadow-xl shadow-emerald-500/25 transition-all hover:scale-105"
-          >
-            <Zap className="w-5 h-5 fill-slate-950" />
-            Criar Endpoint em 5 Segundos
-          </a>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
+          {/* Free */}
+          <div className="p-8 rounded-2xl bg-white border border-slate-200 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Dev Free</h3>
+              <p className="text-xs text-slate-500 mt-1">Perfeito para testes rápidos e side projects</p>
+              <div className="mt-6 mb-6">
+                <span className="text-4xl font-extrabold text-slate-900">R$ 0</span>
+                <span className="text-slate-500 text-sm"> / para sempre</span>
+              </div>
+              <ul className="space-y-3 text-sm text-slate-600">
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  3 Endpoints ativos simultâneos
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Feed SSE em tempo real
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  100 eventos no histórico/dia
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Replay manual para localhost
+                </li>
+              </ul>
+            </div>
+            <button className="mt-8 w-full py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-sm font-semibold text-slate-800 transition-colors cursor-pointer shadow-xs">
+              Criar Conta Gratuita
+            </button>
+          </div>
+
+          {/* Pro (Highlighted) */}
+          <div className="p-8 rounded-2xl bg-white border-2 border-emerald-500 shadow-xl shadow-emerald-500/10 flex flex-col justify-between relative">
+            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-emerald-600 text-white font-bold text-xs uppercase tracking-wider shadow-sm">
+              Mais Popular
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Dev Pro</h3>
+              <p className="text-xs text-slate-500 mt-1">Para desenvolvedores full-stack e freelas</p>
+              <div className="mt-6 mb-6">
+                <span className="text-4xl font-extrabold text-slate-900">R$ 29</span>
+                <span className="text-slate-500 text-sm"> / mês</span>
+              </div>
+              <ul className="space-y-3 text-sm text-slate-700 font-medium">
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Endpoints temporários ilimitados
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Domínios customizados (ex: mock.minhaempresa.com)
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Histórico persistente de 30 dias
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Simulador automático de falhas de rede (400, 500)
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  CLI nativa para Mac, Linux e Windows
+                </li>
+              </ul>
+            </div>
+            <button className="mt-8 w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold text-white transition-all shadow-md shadow-emerald-600/20 cursor-pointer">
+              Iniciar Teste Pro de 7 Dias
+            </button>
+          </div>
+
+          {/* Team */}
+          <div className="p-8 rounded-2xl bg-white border border-slate-200 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Team &amp; Empresa</h3>
+              <p className="text-xs text-slate-500 mt-1">Para squads, agências e fintechs</p>
+              <div className="mt-6 mb-6">
+                <span className="text-4xl font-extrabold text-slate-900">R$ 89</span>
+                <span className="text-slate-500 text-sm"> / mês</span>
+              </div>
+              <ul className="space-y-3 text-sm text-slate-600">
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Até 10 desenvolvedores no time
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Mocks compartilhados entre frontend e backend
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Retenção ilimitada de payloads
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Suporte prioritário via WhatsApp / Slack
+                </li>
+              </ul>
+            </div>
+            <button className="mt-8 w-full py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-sm font-semibold text-slate-800 transition-colors cursor-pointer shadow-xs">
+              Falar com Especialista
+            </button>
+          </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-[#05070c] py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-              <Radio className="w-3.5 h-3.5 text-emerald-400" />
+      <footer className="border-t border-slate-200 bg-white py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-emerald-600 flex items-center justify-center text-white">
+              <Zap className="w-3.5 h-3.5 fill-current" />
             </div>
-            <span className="font-bold text-slate-200">DevMock API</span>
-            <span className="text-xs text-slate-500">© {new Date().getFullYear()} Todos os direitos reservados.</span>
+            <span className="font-bold text-slate-900 text-sm">DevMock API</span>
+            <span className="text-xs text-slate-400">© 2025 • Todos os direitos reservados.</span>
           </div>
 
-          <div className="flex items-center gap-6 text-xs text-slate-400">
-            <a href="#problema" className="hover:text-slate-200 transition-colors">A Dor</a>
-            <a href="#solucao" className="hover:text-slate-200 transition-colors">Solução SSE</a>
-            <a href="#demo" className="hover:text-slate-200 transition-colors">Simulador</a>
-            <a href="#precos" className="hover:text-slate-200 transition-colors">Planos</a>
+          <div className="flex items-center gap-6 text-xs text-slate-500">
+            <a href="#" className="hover:text-emerald-600 transition-colors">Termos de Uso</a>
+            <a href="#" className="hover:text-emerald-600 transition-colors">Privacidade</a>
+            <a href="#" className="hover:text-emerald-600 transition-colors">Docs de API</a>
+            <a href="#" className="hover:text-emerald-600 transition-colors">Status do Servidor</a>
           </div>
         </div>
       </footer>
