@@ -20,8 +20,7 @@ import {
   Activity,
   Sliders,
   Sparkles,
-  GitBranch,
-  Github
+  GitBranch
 } from "lucide-react";
 
 interface WebhookEvent {
